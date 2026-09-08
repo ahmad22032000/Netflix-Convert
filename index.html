@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netflix Cookie Extractor</title>
+    <meta name="description" content="Extract Netflix cookie into login links seamlessly.">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-animation"></div>
+    <div class="container">
+        <header>
+            <h1><span class="highlight">Netflix</span> Token Extractor</h1>
+            <p>Paste your full Netflix cookie to generate magic login links</p>
+        </header>
+
+        <main>
+            <div class="input-section">
+                <label for="cookieInput">Netflix Cookie</label>
+                <textarea id="cookieInput" placeholder="Paste your cookie here... e.g., NetflixId=ct%3DBgjHlOvc..."></textarea>
+                <button id="extractBtn" class="btn-primary">
+                    <span>Extract Links</span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </button>
+            </div>
+
+            <div class="error-message" id="errorMessage">
+                Invalid cookie format or NetflixId not found.
+            </div>
+
+            <div class="results-section" id="resultsSection">
+                <h2>Account Summary</h2>
+                <div class="account-info-card" id="accountInfoCard">
+                    <div class="account-info-item">
+                        <span class="label">Email:</span>
+                        <span class="value" id="accEmail">Loading...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="label">Phone:</span>
+                        <span class="value" id="accPhone">Loading...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="label">Plan:</span>
+                        <span class="value" id="accPlan">Loading...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="label">Next Payment:</span>
+                        <span class="value" id="accNextPayment">Loading...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="label">Member Since:</span>
+                        <span class="value" id="accMemberSince">Loading...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="label">Payment:</span>
+                        <span class="value" id="accPayment">Loading...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="label">Region:</span>
+                        <span class="value" id="accRegion">Loading...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="label">Total Profiles:</span>
+                        <span class="value" id="accTotalProfiles">Loading...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="label">PIN Locked:</span>
+                        <span class="value" id="accLockedProfiles">Loading...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="label">PIN Unlocked:</span>
+                        <span class="value" id="accUnlockedProfiles">Loading...</span>
+                    </div>
+                </div>
+
+                <h2>Generated Magic Links</h2>
+                
+                <div class="link-card">
+                    <div class="link-info">
+                        <h3>Web Login</h3>
+                        <p id="webLinkText" class="truncate-text">https://netflix.com/?nftoken=...</p>
+                    </div>
+                    <div class="link-actions">
+                        <button class="btn-secondary copy-btn" data-target="webLinkText" title="Copy Link">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            Copy Link
+                        </button>
+                        <button class="btn-secondary open-btn" data-target="webLinkText">Open in New Tab</button>
+                    </div>
+                </div>
+
+                <div class="link-card">
+                    <div class="link-info">
+                        <h3>Mobile Login</h3>
+                        <p id="mobileLinkText" class="truncate-text">https://netflix.com/unsupported?nftoken=...</p>
+                    </div>
+                    <div class="link-actions">
+                        <button class="btn-secondary copy-btn" data-target="mobileLinkText" title="Copy Link">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            Copy Link
+                        </button>
+                        <button class="btn-secondary open-btn" data-target="mobileLinkText">Open in New Tab</button>
+                    </div>
+                </div>
+
+                <div class="link-card">
+                    <div class="link-info">
+                        <h3>TV Login</h3>
+                        <p id="tvLinkText" class="truncate-text">https://netflix.com/tv2?nftoken=...</p>
+                    </div>
+                    <div class="link-actions">
+                        <button class="btn-secondary copy-btn" data-target="tvLinkText" title="Copy Link">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                            Copy Link
+                        </button>
+                        <button class="btn-secondary open-btn" data-target="tvLinkText">Open in New Tab</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

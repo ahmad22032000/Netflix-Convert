@@ -1,0 +1,1 @@
+const fs = require('fs'); const html = fs.readFileSync('account_html.txt', 'utf8'); console.log(html.match(/.{0,30}currentCountry.{0,30}/gi)); console.log(html.match(/.{0,30}membershipCountry.{0,30}/gi));
