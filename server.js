@@ -97,8 +97,8 @@ const server = http.createServer((req, res) => {
             req.on('data', chunk => body += chunk.toString());
             req.on('end', async () => {
                 try {
-                    const parsed = JSON.parse(body);
-                    let raw = parsed.cookie ? parsed.cookie.trim() : '';
+                    const parsed = JSON.parse(body) || {};
+                    let raw = typeof parsed.cookie === 'string' ? parsed.cookie.trim() : '';
 
                     if (!raw) {
                         res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -111,7 +111,7 @@ const server = http.createServer((req, res) => {
                         return res.end(JSON.stringify({ error: 'Unsupported cookie format. Accepted: header string, Cookie-Editor JSON, or Netscape cookies.txt.' }));
                     }
 
-                    if (!cookieStr.includes('NetflixId=')) {
+                    if (!/(^|;\s*)NetflixId=/.test(cookieStr)) {
                         res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
                         return res.end(JSON.stringify({ error: 'Cookie parsed but no NetflixId found. Make sure you exported the netflix.com cookies (NetflixId is required).' }));
                     }
@@ -124,7 +124,7 @@ const server = http.createServer((req, res) => {
                     });
                     res.end(JSON.stringify(info));
                 } catch (e) {
-                    const status = e.code === 'AUTH' ? 401 : e.code === 'NETWORK' ? 502 : 500;
+                    const status = e.code === 'AUTH' ? 401 : (e.code === 'NETWORK' || e.code === 'UPSTREAM') ? 502 : 500;
                     res.writeHead(status, {
                         'Content-Type': 'application/json',
                         'Access-Control-Allow-Origin': '*'

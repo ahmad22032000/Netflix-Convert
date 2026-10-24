@@ -381,4 +381,57 @@ async function runServerTests() {
             await new Promise(r => setTimeout(r, 300));
         }
     }
+
+    /* ---------------- account-info auth detection over HTTP ---------------- */
+
+    // logged-out cookie: Netflix answers 200 + login page -> must be 401
+    {
+        const c = startServer({ MOCK_NETFLIX_MODE: 'ok', MOCK_ACCOUNT_MODE: 'login' });
+        try {
+            await waitForPort(3000, 15000);
+            const r = await request({ path: '/api/account-info', body: { cookie: 'NetflixId=expired' } });
+            check('server account-info logged-out -> 401', () => {
+                assert.strictEqual(r.status, 401, r.body);
+                assert.ok(/rejected|expired|logged out/i.test(r.json.error), r.body);
+                assert.strictEqual(r.json.email, undefined, 'no fake payload');
+            });
+        } finally {
+            c.kill();
+            await new Promise(r => setTimeout(r, 300));
+        }
+    }
+
+    // genuinely authenticated cookie -> 200 with parsed data
+    {
+        const c = startServer({ MOCK_NETFLIX_MODE: 'ok', MOCK_ACCOUNT_MODE: 'ok' });
+        try {
+            await waitForPort(3000, 15000);
+            const r = await request({ path: '/api/account-info', body: { cookie: 'NetflixId=good' } });
+            check('server account-info valid cookie -> 200 parsed', () => {
+                assert.strictEqual(r.status, 200, r.body);
+                assert.strictEqual(r.json.email, 'user@example.com');
+                assert.strictEqual(r.json.plan, 'Premium');
+                assert.strictEqual(r.json.totalProfiles, 2);
+                assert.strictEqual(r.json.authenticated, true);
+            });
+        } finally {
+            c.kill();
+            await new Promise(r => setTimeout(r, 300));
+        }
+    }
+
+    // Netflix unreachable -> 502
+    {
+        const c = startServer({ MOCK_NETFLIX_MODE: 'ok', MOCK_ACCOUNT_MODE: 'network' });
+        try {
+            await waitForPort(3000, 15000);
+            const r = await request({ path: '/api/account-info', body: { cookie: 'NetflixId=good' } });
+            check('server account-info unreachable -> 502', () => {
+                assert.strictEqual(r.status, 502, r.body);
+            });
+        } finally {
+            c.kill();
+            await new Promise(r => setTimeout(r, 300));
+        }
+    }
 }

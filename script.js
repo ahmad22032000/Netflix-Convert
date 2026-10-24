@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const accUnlockedProfiles = document.getElementById('accUnlockedProfiles');
     const profilesGrid = document.getElementById('profilesGrid');
     const profileCountBadge = document.getElementById('profileCountBadge');
+    const accountNotice = document.getElementById('accountNotice');
 
     const openBtns = document.querySelectorAll('.open-btn');
 
@@ -183,6 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
         accUnlockedProfiles.textContent = "Loading...";
         profilesGrid.innerHTML = '';
         profileCountBadge.textContent = '';
+        hideAccountNotice();
 
         try {
             // One generate request for the selected device + account info in parallel.
@@ -227,19 +229,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 accLockedProfiles.textContent = infoData.lockedProfiles !== undefined ? infoData.lockedProfiles : 'Unknown';
                 accUnlockedProfiles.textContent = infoData.unlockedProfiles !== undefined ? infoData.unlockedProfiles : 'Unknown';
                 renderProfiles(infoData.profiles || [], infoData.totalProfiles, infoData.lockedProfiles);
+
+                if (infoData.partial) {
+                    showAccountNotice('Limited data — Netflix did not return the full account page. Some fields may show Unknown.');
+                } else {
+                    hideAccountNotice();
+                }
             } else {
-                accEmail.textContent = "Failed";
-                accPhone.textContent = "Failed";
-                accPlan.textContent = "Failed";
-                accNextPayment.textContent = "Failed";
-                accMemberSince.textContent = "Failed";
-                accPayment.textContent = "Failed";
-                accRegion.textContent = "Failed";
-                accTotalProfiles.textContent = "Failed";
-                accLockedProfiles.textContent = "Failed";
-                accUnlockedProfiles.textContent = "Failed";
-                profilesGrid.innerHTML = '<div class="profile-empty">Failed to load profiles.</div>';
+                const infoError = (infoRes.reason && infoRes.reason.message)
+                    || 'Could not load account info for this cookie.';
+
+                accEmail.textContent = "—";
+                accPhone.textContent = "—";
+                accPlan.textContent = "—";
+                accNextPayment.textContent = "—";
+                accMemberSince.textContent = "—";
+                accPayment.textContent = "—";
+                accRegion.textContent = "—";
+                accTotalProfiles.textContent = "—";
+                accLockedProfiles.textContent = "—";
+                accUnlockedProfiles.textContent = "—";
+                profilesGrid.innerHTML = '<div class="profile-empty">Account data unavailable.</div>';
                 profileCountBadge.textContent = '';
+                showAccountNotice(infoError);
             }
 
             if (linkError) {
@@ -391,6 +403,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function hideError() {
         errorMessage.style.display = 'none';
+    }
+
+    function showAccountNotice(message) {
+        accountNotice.textContent = message;
+        accountNotice.hidden = false;
+    }
+
+    function hideAccountNotice() {
+        accountNotice.textContent = '';
+        accountNotice.hidden = true;
     }
 
     updateDeviceUI();

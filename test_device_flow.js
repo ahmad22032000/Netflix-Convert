@@ -98,6 +98,7 @@ const window = {
 const calls = [];
 let nextGenerate = (device) => ({ token: 'TOK_' + device.toUpperCase(), link: `https://netflix.com/LINK_${device}`, device });
 let generateFails = false;
+let accountMode = 'fail';   // fail | ok | partial
 
 global.fetch = async (url, opts) => {
     const body = JSON.parse(opts.body);
@@ -107,7 +108,31 @@ global.fetch = async (url, opts) => {
         if (generateFails) return { ok: false, status: 500, json: async () => ({ error: 'Netflix API Error' }) };
         return { ok: true, status: 200, json: async () => nextGenerate(body.device) };
     }
-    return { ok: false, status: 401, json: async () => ({ error: 'Invalid cookie' }) };
+
+    if (accountMode === 'fail') {
+        return {
+            ok: false,
+            status: 401,
+            json: async () => ({ error: 'Cookie rejected by Netflix (session expired or logged out).' })
+        };
+    }
+
+    const payload = {
+        email: 'user@example.com',
+        phone: '+6281234567890',
+        plan: 'Premium',
+        region: 'ID',
+        nextBillingDate: '2026-11-24',
+        memberSince: 'March 2020',
+        payment: 'Visa 4242',
+        totalProfiles: 1,
+        lockedProfiles: 1,
+        unlockedProfiles: 0,
+        profiles: [{ name: 'Alice', guid: 'GUID1', isPinLocked: true, isKids: false, isActive: true, isAccountOwner: true }],
+        authenticated: true,
+        partial: accountMode === 'partial'
+    };
+    return { ok: true, status: 200, json: async () => payload };
 };
 
 /* ------------------------- run script.js ------------------------- */
@@ -125,6 +150,8 @@ const run = async () => {
     const resultDeviceLabel = registry.get('resultDeviceLabel');
     const extractBtnLabel = registry.get('extractBtnLabel');
     const errorMessage = registry.get('errorMessage');
+    const accountNotice = registry.get('accountNotice');
+    const accEmail = registry.get('accEmail');
 
     // 1. initial state
     assert.strictEqual(resultCard.hidden, true, 'result card must start hidden');
@@ -143,6 +170,11 @@ const run = async () => {
     assert.strictEqual(resultDeviceLabel.textContent, 'Web');
     assert.strictEqual(resultLinkText.dataset.fullLink, 'https://netflix.com/LINK_web');
 
+    // 2b. account-info failed (401) -> honest placeholder + notice, no fake data
+    assert.strictEqual(accEmail.textContent, '—', 'no fake email on rejected cookie');
+    assert.strictEqual(accountNotice.hidden, false, 'account notice must show');
+    assert.ok(/rejected|expired/i.test(accountNotice.textContent), accountNotice.textContent);
+
     // 3. switch to TV -> previous link cleared, no request fired
     calls.length = 0;
     await deviceBtns[2].dispatch('click');
@@ -158,6 +190,19 @@ const run = async () => {
     assert.strictEqual(tvCall[0].body.device, 'tv');
     assert.strictEqual(resultDeviceLabel.textContent, 'TV');
     assert.strictEqual(resultLinkText.dataset.fullLink, 'https://netflix.com/LINK_tv');
+
+    // 4b. account-info ok -> real data, notice hidden
+    accountMode = 'ok';
+    await extractBtn.dispatch('click');
+    assert.strictEqual(accEmail.textContent, 'user@example.com');
+    assert.strictEqual(accountNotice.hidden, true, 'notice hidden when data is complete');
+
+    // 4c. partial payload -> notice warns instead of silently showing Unknown
+    accountMode = 'partial';
+    await extractBtn.dispatch('click');
+    assert.strictEqual(accountNotice.hidden, false, 'partial data must raise a notice');
+    assert.ok(/Limited data/i.test(accountNotice.textContent), accountNotice.textContent);
+    accountMode = 'fail';
 
     // 5. server-side device echo wins (mismatched response cannot break UI)
     nextGenerate = () => ({ token: 'TOK_X', link: 'https://netflix.com/FROM_SERVER', device: 'mobile' });

@@ -520,8 +520,20 @@ textarea:focus {
 }
 
 .link-card[hidden],
-.link-empty[hidden] {
+.link-empty[hidden],
+.account-notice[hidden] {
     display: none !important;
+}
+
+.account-notice {
+    margin: -1rem 0 1.5rem;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(250, 204, 21, 0.45);
+    background: rgba(250, 204, 21, 0.1);
+    color: #fde047;
+    font-size: 0.9rem;
+    line-height: 1.4;
 }
 
 .link-empty {

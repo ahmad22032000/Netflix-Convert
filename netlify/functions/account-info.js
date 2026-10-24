@@ -1,6 +1,13 @@
 const { normalizeCookie } = require('../../lib/cookie');
 const { fetchAccountInfo } = require('../../lib/account');
 
+/** Map a fetchAccountInfo error code to an HTTP status. */
+function statusForError(e) {
+    if (e && e.code === 'AUTH') return 401;
+    if (e && (e.code === 'NETWORK' || e.code === 'UPSTREAM')) return 502;
+    return 500;
+}
+
 exports.handler = async (event, context) => {
     if (event.httpMethod === 'OPTIONS') {
         return {
@@ -22,11 +29,15 @@ exports.handler = async (event, context) => {
     }
 
     try {
-        const parsed = JSON.parse(event.body);
-        const raw = parsed.cookie ? String(parsed.cookie).trim() : '';
+        const parsed = JSON.parse(event.body || '{}') || {};
+        const raw = typeof parsed.cookie === 'string' ? parsed.cookie.trim() : '';
 
         if (!raw) {
-            return { statusCode: 400, body: JSON.stringify({ error: 'Missing cookie in request body' }) };
+            return {
+                statusCode: 400,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                body: JSON.stringify({ error: 'Missing cookie in request body' })
+            };
         }
 
         const { cookie: cookieStr, format } = normalizeCookie(raw);
@@ -34,15 +45,17 @@ exports.handler = async (event, context) => {
         if (!cookieStr) {
             return {
                 statusCode: 400,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                 body: JSON.stringify({
                     error: 'Unsupported cookie format. Accepted: header string, Cookie-Editor JSON, or Netscape cookies.txt.'
                 })
             };
         }
 
-        if (!cookieStr.includes('NetflixId=')) {
+        if (!/(^|;\s*)NetflixId=/.test(cookieStr)) {
             return {
                 statusCode: 400,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
                 body: JSON.stringify({
                     error: 'Cookie parsed but no NetflixId found. Make sure you exported the netflix.com cookies (NetflixId is required).'
                 })
@@ -53,15 +66,15 @@ exports.handler = async (event, context) => {
 
         return {
             statusCode: 200,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
             body: JSON.stringify(info)
         };
     } catch (e) {
-        const status = e.code === 'AUTH' ? 401 : e.code === 'NETWORK' ? 502 : 500;
+        const status = statusForError(e);
         return {
             statusCode: status,
             headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-            body: JSON.stringify({ error: e.message || 'Failed to fetch account info' })
+            body: JSON.stringify({ error: (e && e.message) || 'Failed to fetch account info' })
         };
     }
 };
