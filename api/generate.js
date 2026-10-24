@@ -1,5 +1,7 @@
 const https = require('https');
 const qs = require('querystring');
+const { normalizeCookie } = require('../lib/cookie');
+const { resolveDevice, buildLink } = require('../lib/devices');
 
 module.exports = (req, res) => {
     // Handle CORS
@@ -16,30 +18,34 @@ module.exports = (req, res) => {
     }
 
     try {
-        let cookieStr = req.body.cookie ? req.body.cookie.trim() : '';
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const raw = typeof body.cookie === 'string' ? body.cookie.trim() : '';
 
-        if (!cookieStr) {
+        if (!raw) {
             return res.status(400).json({ error: 'Missing cookie in request body' });
         }
 
-        // Auto-convert Cookie-Editor JSON format to a string
-        if (cookieStr.startsWith('[') && cookieStr.endsWith(']')) {
-            try {
-                const cookieArr = JSON.parse(cookieStr);
-                if (Array.isArray(cookieArr)) {
-                    cookieStr = cookieArr
-                        .filter(c => c.name && c.value)
-                        .map(c => `${c.name}=${c.value}`)
-                        .join('; ');
-                }
-            } catch(err) {
-                // Ignore JSON parse errors
-            }
+        // Accept header string, Cookie-Editor JSON, or Netscape cookies.txt
+        const { cookie: cookieStr, format } = normalizeCookie(raw);
+
+        if (!cookieStr) {
+            return res.status(400).json({
+                error: 'Unsupported cookie format. Accepted: header string, Cookie-Editor JSON, or Netscape cookies.txt.'
+            });
         }
+
+        // Only one device is generated per request (web | mobile | tv).
+        // Unknown values fall back to the default instead of failing.
+        const device = resolveDevice(body.device);
 
         generateToken(cookieStr)
             .then(token => {
-                res.status(200).json({ token: token });
+                res.status(200).json({
+                    token: token,
+                    device: device,
+                    link: buildLink(device, token),
+                    cookieFormat: format
+                });
             })
             .catch(err => {
                 res.status(500).json({ error: err.message || 'Failed to generate token' });

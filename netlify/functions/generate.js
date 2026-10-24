@@ -1,5 +1,7 @@
 const https = require('https');
 const qs = require('querystring');
+const { normalizeCookie } = require('../../lib/cookie');
+const { resolveDevice, buildLink } = require('../../lib/devices');
 
 exports.handler = async (event, context) => {
     // Handle CORS Preflight requests
@@ -24,40 +26,46 @@ exports.handler = async (event, context) => {
     }
 
     try {
-        const parsed = JSON.parse(event.body);
-        let cookieStr = parsed.cookie ? parsed.cookie.trim() : '';
-        
-        if (!cookieStr) {
+        const parsed = JSON.parse(event.body || '{}') || {};
+        const raw = typeof parsed.cookie === 'string' ? parsed.cookie.trim() : '';
+
+        if (!raw) {
             return {
                 statusCode: 400,
                 body: JSON.stringify({ error: 'Missing cookie in request body' })
             };
         }
 
-        // Auto-convert Cookie-Editor JSON format to a string
-        if (cookieStr.startsWith('[') && cookieStr.endsWith(']')) {
-            try {
-                const cookieArr = JSON.parse(cookieStr);
-                if (Array.isArray(cookieArr)) {
-                    cookieStr = cookieArr
-                        .filter(c => c.name && c.value)
-                        .map(c => `${c.name}=${c.value}`)
-                        .join('; ');
-                }
-            } catch(err) {
-                // Ignore JSON parse errors and just use the raw string
-            }
+        // Accept header string, Cookie-Editor JSON, or Netscape cookies.txt
+        const { cookie: cookieStr, format } = normalizeCookie(raw);
+
+        if (!cookieStr) {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({
+                    error: 'Unsupported cookie format. Accepted: header string, Cookie-Editor JSON, or Netscape cookies.txt.'
+                })
+            };
         }
 
+        // Only one device is generated per request (web | mobile | tv).
+        // Unknown values fall back to the default instead of failing.
+        const device = resolveDevice(parsed && parsed.device);
+
         const token = await generateToken(cookieStr);
-        
+
         return {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            body: JSON.stringify({ token: token })
+            body: JSON.stringify({
+                token: token,
+                device: device,
+                link: buildLink(device, token),
+                cookieFormat: format
+            })
         };
 
     } catch (error) {

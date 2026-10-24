@@ -3,6 +3,9 @@ const https = require('https');
 const url = require('url');
 const fs = require('fs');
 const path = require('path');
+const { normalizeCookie } = require('./lib/cookie');
+const { fetchAccountInfo } = require('./lib/account');
+const { resolveDevice, buildLink } = require('./lib/devices');
 
 const PORT = 3000;
 
@@ -31,46 +34,44 @@ const server = http.createServer((req, res) => {
         req.on('data', chunk => body += chunk.toString());
         req.on('end', () => {
             try {
-                const data = JSON.parse(body);
-                let cookieStr = data.cookie.trim();
+                const data = JSON.parse(body) || {};
+                let raw = typeof data.cookie === 'string' ? data.cookie.trim() : '';
 
-                // Auto-convert Cookie-Editor JSON format to a string
-                if (cookieStr.startsWith('[') && cookieStr.endsWith(']')) {
-                    try {
-                        const cookieArr = JSON.parse(cookieStr);
-                        if (Array.isArray(cookieArr)) {
-                            cookieStr = cookieArr
-                                .filter(c => c.name && c.value)
-                                .map(c => `${c.name}=${c.value}`)
-                                .join('; ');
-                        }
-                    } catch(err) {
-                        // Ignore JSON parse errors and just use the raw string
-                    }
-                }
-
-                if (!cookieStr) {
+                if (!raw) {
                     res.writeHead(400, { 'Content-Type': 'application/json' });
                     return res.end(JSON.stringify({ error: 'Cookie is required' }));
                 }
 
+                const { cookie: cookieStr, format } = normalizeCookie(raw);
+                if (!cookieStr) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ error: 'Unsupported cookie format. Accepted: header string, Cookie-Editor JSON, or Netscape cookies.txt.' }));
+                }
+
                 generateToken(cookieStr)
                     .then(token => {
-                        res.writeHead(200, { 
+                        // Only one device is generated per request (web | mobile | tv).
+                        const device = resolveDevice(data.device);
+                        res.writeHead(200, {
                             'Content-Type': 'application/json',
                             'Access-Control-Allow-Origin': '*'
                         });
-                        res.end(JSON.stringify({ token: token }));
+                        res.end(JSON.stringify({
+                            token: token,
+                            device: device,
+                            link: buildLink(device, token),
+                            cookieFormat: format
+                        }));
                     })
                     .catch(err => {
-                        res.writeHead(500, { 
+                        res.writeHead(500, {
                             'Content-Type': 'application/json',
                             'Access-Control-Allow-Origin': '*'
                         });
                         res.end(JSON.stringify({ error: err.message || 'Failed to generate token' }));
                     });
             } catch (e) {
-                res.writeHead(400, { 
+                res.writeHead(400, {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*'
                 });
@@ -97,96 +98,34 @@ const server = http.createServer((req, res) => {
             req.on('end', async () => {
                 try {
                     const parsed = JSON.parse(body);
-                    let cookieStr = parsed.cookie.trim();
-                    
-                    // Auto-convert Cookie-Editor JSON format to a string
-                    if (cookieStr.startsWith('[') && cookieStr.endsWith(']')) {
-                        try {
-                            const cookieArr = JSON.parse(cookieStr);
-                            if (Array.isArray(cookieArr)) {
-                                cookieStr = cookieArr
-                                    .filter(c => c.name && c.value)
-                                    .map(c => `${c.name}=${c.value}`)
-                                    .join('; ');
-                            }
-                        } catch(err) {
-                            // Ignore JSON parse errors and just use the raw string
-                        }
-                    }
-                    
-                    const fetchRes = await fetch('https://www.netflix.com/YourAccount', {
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                            'Cookie': cookieStr,
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                            'Accept-Language': 'en-US,en;q=0.9'
-                        }
-                    });
-                    
-                    const html = await fetchRes.text();
-                    
-                    // Helper to decode hex and unicode escapes from Netflix HTML
-                    const decodeNetflixStr = (str) => {
-                        if (!str) return 'Unknown';
-                        return str.replace(/\\x([0-9A-Fa-f]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16)))
-                                  .replace(/\\u([0-9A-Fa-f]{4})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16)));
-                    };
+                    let raw = parsed.cookie ? parsed.cookie.trim() : '';
 
-                    // Extract email
-                    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
-                    const emails = Array.from(new Set(html.match(emailRegex) || []));
-                    let email = emails.find(e => e.includes('@') && !e.includes('.png') && !e.includes('.jpg')) || 'Unknown';
-                    email = decodeNetflixStr(email);
-                    
-                    // Extract plan
-                    const planRegex = /"name":"(Premium|Standard|Basic|Mobile)"/i;
-                    const planMatch = html.match(planRegex);
-                    const plan = planMatch ? decodeNetflixStr(planMatch[1]) : 'Unknown';
-                    
-                    // Extract phone
-                    const phoneRegex = /"phoneNumber":"([^"]+)"/;
-                    const phoneMatch = html.match(phoneRegex);
-                    const phone = phoneMatch ? decodeNetflixStr(phoneMatch[1]) : 'Unknown';
-                    
-                    // Extract payment
-                    const paymentType = html.match(/"type":\{"fieldType":"String","value":"([^"]+)"\}/);
-                    const paymentMethod = html.match(/"paymentMethod":\{"fieldType":"String","value":"([^"]+)"\}/);
-                    const paymentText = html.match(/"displayText":\{"fieldType":"String","value":"([^"]+)"\}/);
-                    
-                    let paymentStr = 'Unknown';
-                    if (paymentMethod || paymentType || paymentText) {
-                        paymentStr = [
-                            paymentMethod ? decodeNetflixStr(paymentMethod[1]) : '',
-                            paymentType ? decodeNetflixStr(paymentType[1]) : '',
-                            paymentText ? decodeNetflixStr(paymentText[1]) : ''
-                        ].filter(Boolean).join(' ');
+                    if (!raw) {
+                        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                        return res.end(JSON.stringify({ error: 'Missing cookie in request body' }));
                     }
-                    // Extract Region
-                    const regionRegex = /"currentCountry":"([^"]+)"/;
-                    const regionMatch = html.match(regionRegex);
-                    const region = regionMatch ? decodeNetflixStr(regionMatch[1]) : 'Unknown';
-                    
-                    // Extract Profiles Count
-                    const profileRegex = /"guid":"([^"]+)","maturityRating"/g;
-                    const profilesMatch = html.match(profileRegex);
-                    const totalProfiles = profilesMatch ? profilesMatch.length : 0;
 
-                    res.writeHead(200, { 
+                    const { cookie: cookieStr, format } = normalizeCookie(raw);
+                    if (!cookieStr) {
+                        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                        return res.end(JSON.stringify({ error: 'Unsupported cookie format. Accepted: header string, Cookie-Editor JSON, or Netscape cookies.txt.' }));
+                    }
+
+                    if (!cookieStr.includes('NetflixId=')) {
+                        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+                        return res.end(JSON.stringify({ error: 'Cookie parsed but no NetflixId found. Make sure you exported the netflix.com cookies (NetflixId is required).' }));
+                    }
+
+                    const info = await fetchAccountInfo(cookieStr, format);
+
+                    res.writeHead(200, {
                         'Content-Type': 'application/json',
                         'Access-Control-Allow-Origin': '*'
                     });
-                    res.end(JSON.stringify({ 
-                        email: email,
-                        phone: phone,
-                        plan: plan,
-                        payment: paymentStr,
-                        region: region,
-                        totalProfiles: totalProfiles,
-                        lockedProfiles: "N/A",
-                        unlockedProfiles: "N/A"
-                    }));
+                    res.end(JSON.stringify(info));
                 } catch (e) {
-                    res.writeHead(500, { 
+                    const status = e.code === 'AUTH' ? 401 : e.code === 'NETWORK' ? 502 : 500;
+                    res.writeHead(status, {
                         'Content-Type': 'application/json',
                         'Access-Control-Allow-Origin': '*'
                     });
@@ -246,7 +185,7 @@ function generateToken(cookieStr) {
             "x-netflix.client.ftl.esn": "NFAPPL-02-IPHONE8=1-PXA-02026U9VV5O8AUKEAEO8PUJETCGDD4PQRI9DEB3MDLEMD0EACM4CS78LMD334MN3MQ3NMJ8SU9O9MVGS6BJCURM1PH1MUTGDPF4S4200"
         };
 
-        const req = https.get(targetUrl, { headers }, (res) => {
+        const req = https.get(targetUrl, { headers, timeout: 15000 }, (res) => {
             let data = '';
             res.on('data', chunk => data += chunk);
             res.on('end', () => {
@@ -267,6 +206,11 @@ function generateToken(cookieStr) {
 
         req.on('error', (err) => {
             reject(err);
+        });
+
+        req.on('timeout', () => {
+            req.destroy();
+            reject(new Error('Request to Netflix timed out'));
         });
     });
 }

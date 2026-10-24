@@ -19,9 +19,30 @@
         <main>
             <div class="input-section">
                 <label for="cookieInput">Netflix Cookie</label>
-                <textarea id="cookieInput" placeholder="Paste your cookie here... e.g., NetflixId=ct%3DBgjHlOvc..."></textarea>
+                <textarea id="cookieInput" placeholder="Paste cookie here. Supported formats:&#10;• Header string: NetflixId=...; SecureNetflixId=...&#10;• Cookie-Editor JSON: [{&quot;name&quot;:&quot;NetflixId&quot;,&quot;value&quot;:&quot;...&quot;}]&#10;• Netscape cookies.txt (tab-separated)"></textarea>
+                <p class="cookie-format-hint">Auto-detects <code>header string</code>, <code>JSON</code>, and <code>Netscape</code> formats.</p>
+
+                <div class="device-block">
+                    <label class="device-label">Choose device (one link per generate)</label>
+                    <div class="device-selector" id="deviceSelector" role="group" aria-label="Select device for the generated link">
+                        <button type="button" class="device-btn active" data-device="web" aria-pressed="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                            <span>Web</span>
+                        </button>
+                        <button type="button" class="device-btn" data-device="mobile" aria-pressed="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+                            <span>Mobile</span>
+                        </button>
+                        <button type="button" class="device-btn" data-device="tv" aria-pressed="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="13" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>
+                            <span>TV</span>
+                        </button>
+                    </div>
+                    <p class="device-hint" id="deviceHint">Only the selected device is generated — no 3-device batch.</p>
+                </div>
+
                 <button id="extractBtn" class="btn-primary">
-                    <span>Extract Links</span>
+                    <span id="extractBtnLabel">Generate Web Link</span>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                 </button>
             </div>
@@ -75,49 +96,26 @@
                     </div>
                 </div>
 
-                <h2>Generated Magic Links</h2>
-                
-                <div class="link-card">
+                <h2>Profiles <span class="profile-count-badge" id="profileCountBadge"></span></h2>
+                <div class="profiles-grid" id="profilesGrid"></div>
+
+                <h2>Generated Link</h2>
+
+                <div class="link-card" id="resultCard" hidden>
                     <div class="link-info">
-                        <h3>Web Login</h3>
-                        <p id="webLinkText" class="truncate-text">https://netflix.com/?nftoken=...</p>
+                        <h3><span id="resultDeviceLabel">Web</span> Login</h3>
+                        <p id="resultLinkText" class="truncate-text">https://netflix.com/?nftoken=...</p>
                     </div>
                     <div class="link-actions">
-                        <button class="btn-secondary copy-btn" data-target="webLinkText" title="Copy Link">
+                        <button class="btn-secondary copy-btn" data-target="resultLinkText" title="Copy Link">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                             Copy Link
                         </button>
-                        <button class="btn-secondary open-btn" data-target="webLinkText">Open in New Tab</button>
+                        <button class="btn-secondary open-btn" data-target="resultLinkText">Open in New Tab</button>
                     </div>
                 </div>
 
-                <div class="link-card">
-                    <div class="link-info">
-                        <h3>Mobile Login</h3>
-                        <p id="mobileLinkText" class="truncate-text">https://netflix.com/unsupported?nftoken=...</p>
-                    </div>
-                    <div class="link-actions">
-                        <button class="btn-secondary copy-btn" data-target="mobileLinkText" title="Copy Link">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            Copy Link
-                        </button>
-                        <button class="btn-secondary open-btn" data-target="mobileLinkText">Open in New Tab</button>
-                    </div>
-                </div>
-
-                <div class="link-card">
-                    <div class="link-info">
-                        <h3>TV Login</h3>
-                        <p id="tvLinkText" class="truncate-text">https://netflix.com/tv2?nftoken=...</p>
-                    </div>
-                    <div class="link-actions">
-                        <button class="btn-secondary copy-btn" data-target="tvLinkText" title="Copy Link">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                            Copy Link
-                        </button>
-                        <button class="btn-secondary open-btn" data-target="tvLinkText">Open in New Tab</button>
-                    </div>
-                </div>
+                <p class="link-empty" id="resultEmpty">Pick a device and press Generate to create one link.</p>
             </div>
         </main>
     </div>
