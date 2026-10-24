@@ -22,7 +22,8 @@ const BODIES = {
     ok: JSON.stringify({ value: { account: { token: { default: { token: 'TOKEN_FAKE' } } } } }),
     error: JSON.stringify({ error: { code: 'E_LOGIN', message: 'Session expired' } }),
     garbage: '<html>upstream failure</html>',
-    empty: JSON.stringify({ value: { account: {} } })
+    empty: JSON.stringify({ value: { account: {} } }),
+    emptysession: JSON.stringify({ value: {}, paths: ['account', 'token', 'default'] })
 };
 
 function fakeRequest(cb) {

@@ -98,6 +98,7 @@ const window = {
 const calls = [];
 let nextGenerate = (device) => ({ token: 'TOK_' + device.toUpperCase(), link: `https://netflix.com/LINK_${device}`, device });
 let generateFails = false;
+let generateErrorPayload = null;
 let accountMode = 'fail';   // fail | ok | partial
 
 global.fetch = async (url, opts) => {
@@ -105,6 +106,13 @@ global.fetch = async (url, opts) => {
     calls.push({ url, body });
 
     if (url.endsWith('/api/generate')) {
+        if (generateErrorPayload) {
+            return {
+                ok: false,
+                status: generateErrorPayload.status || 401,
+                json: async () => generateErrorPayload.body
+            };
+        }
         if (generateFails) return { ok: false, status: 500, json: async () => ({ error: 'Netflix API Error' }) };
         return { ok: true, status: 200, json: async () => nextGenerate(body.device) };
     }
@@ -226,6 +234,30 @@ const run = async () => {
     assert.strictEqual(resultCard.hidden, true, 'no link card on failure');
     assert.ok(/Netflix API Error/.test(errorMessage.textContent), 'error text must be surfaced');
     generateFails = false;
+
+    // 7b. Token rejection -> user gets actionable hint + safe diagnostics,
+    // never the cookie value itself.
+    generateErrorPayload = {
+        status: 401,
+        body: {
+            error: 'Netflix rejected this cookie (empty session). The cookie is invalid, expired, or truncated.',
+            hint: 'NetflixId looks truncated (20 chars). Re-export without line breaks or truncation.',
+            diagnostics: {
+                names: ['NetflixId', 'SecureNetflixId'],
+                hasNetflixId: true,
+                hasSecureNetflixId: true,
+                netflixIdLength: 20,
+                secureNetflixIdLength: 40
+            }
+        }
+    };
+    cookieInput.value = 'NetflixId=short; SecureNetflixId=short';
+    await extractBtn.dispatch('click');
+    assert.ok(/invalid, expired, or truncated/i.test(errorMessage.textContent), errorMessage.textContent);
+    assert.ok(/Hint:.*truncated/i.test(errorMessage.textContent), errorMessage.textContent);
+    assert.ok(/Detected:.*NetflixId 20 chars/i.test(errorMessage.textContent), errorMessage.textContent);
+    assert.ok(!errorMessage.textContent.includes('short'), 'cookie values must never appear in error UI');
+    generateErrorPayload = null;
 
     // 8. empty cookie -> error, zero requests
     calls.length = 0;

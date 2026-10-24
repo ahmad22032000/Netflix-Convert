@@ -29,7 +29,8 @@ const BODIES = {
     ok: JSON.stringify({ value: { account: { token: { default: { token: 'TOKEN_FAKE' } } } } }),
     error: JSON.stringify({ error: { code: 'E_LOGIN', message: 'Session expired' } }),
     garbage: '<html>upstream failure</html>',
-    empty: JSON.stringify({ value: { account: {} } })
+    empty: JSON.stringify({ value: { account: {} } }),
+    emptysession: JSON.stringify({ value: {}, paths: ['account', 'token', 'default'] })
 };
 
 https.request = (targetUrl, options, cb) => {
@@ -182,17 +183,33 @@ function check(name, fn) {
         });
     }
 
-    // Upstream failures -> clean 500, no crash
-    for (const mode of ['error', 'garbage', 'empty']) {
+    // Upstream failures -> classified status, message, hint, diagnostics
+    for (const [mode, expected] of [['error', 502], ['garbage', 502], ['empty', 401], ['emptysession', 401]]) {
         netflixCalls = 0;
         netflixMode = mode;
         const r = await callVercel({ body: { cookie: COOKIE, device: 'tv' } });
-        check(`vercel upstream ${mode} -> 500 with message`, () => {
-            assert.strictEqual(r.statusCode, 500, r.body);
+        check(`vercel upstream ${mode} -> ${expected} with hint+diagnostics`, () => {
+            assert.strictEqual(r.statusCode, expected, r.body);
             assert.ok(r.jsonBody.error && r.jsonBody.error.length > 0);
+            assert.ok(r.jsonBody.hint && r.jsonBody.hint.length > 10, 'hint present: ' + r.jsonBody.hint);
+            assert.ok(r.jsonBody.diagnostics && Array.isArray(r.jsonBody.diagnostics.names), 'diagnostics present');
+            assert.strictEqual(r.jsonBody.diagnostics.hasNetflixId, true);
+            assert.ok(r.jsonBody.diagnostics.netflixIdLength > 0);
+            assert.strictEqual(r.jsonBody.token, undefined, 'no token on failure');
         });
     }
     netflixMode = 'ok';
+
+    // Cookie without NetflixId is rejected before calling Netflix
+    {
+        netflixCalls = 0;
+        const r = await callVercel({ body: { cookie: 'SecureNetflixId=abc' , device: 'web' } });
+        check('vercel cookie without NetflixId -> 400 + diagnostics, no upstream call', () => {
+            assert.strictEqual(r.statusCode, 400, r.body);
+            assert.strictEqual(r.jsonBody.diagnostics.hasNetflixId, false);
+            assert.strictEqual(netflixCalls, 0);
+        });
+    }
 
     /* ---------------- Netlify handler ---------------- */
 
@@ -366,14 +383,16 @@ async function runServerTests() {
     }
 
     // --- upstream failure modes ---
-    for (const mode of ['error', 'garbage', 'empty']) {
+    for (const [mode, expected] of [['error', 502], ['garbage', 502], ['empty', 401], ['emptysession', 401]]) {
         const c = startServer({ MOCK_NETFLIX_MODE: mode });
         try {
             await waitForPort(3000, 15000);
             const r = await request({ path: '/api/generate', body: { cookie: COOKIE, device: 'web' } });
-            check(`server upstream ${mode} -> 500 with message`, () => {
-                assert.strictEqual(r.status, 500, r.body);
+            check(`server upstream ${mode} -> ${expected} with hint+diagnostics`, () => {
+                assert.strictEqual(r.status, expected, r.body);
                 assert.ok(r.json && typeof r.json.error === 'string' && r.json.error.length > 0);
+                assert.ok(r.json.hint && r.json.hint.length > 10, 'hint present');
+                assert.ok(r.json.diagnostics && Array.isArray(r.json.diagnostics.names), 'diagnostics present');
             });
             check(`server alive after upstream ${mode}`, () => assert.strictEqual(c.exitCode, null));
         } finally {

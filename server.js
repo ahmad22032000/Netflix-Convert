@@ -1,13 +1,19 @@
 const http = require('http');
-const https = require('https');
 const url = require('url');
 const fs = require('fs');
 const path = require('path');
 const { normalizeCookie } = require('./lib/cookie');
 const { fetchAccountInfo } = require('./lib/account');
 const { resolveDevice, buildLink } = require('./lib/devices');
+const { generateToken, cookieDiagnostics } = require('./lib/token');
 
 const PORT = 3000;
+
+function statusForError(e) {
+    if (e && e.code === 'AUTH') return 401;
+    if (e && (e.code === 'NETWORK' || e.code === 'UPSTREAM')) return 502;
+    return 500;
+}
 
 const MIME_TYPES = {
     '.html': 'text/html',
@@ -48,6 +54,17 @@ const server = http.createServer((req, res) => {
                     return res.end(JSON.stringify({ error: 'Unsupported cookie format. Accepted: header string, Cookie-Editor JSON, or Netscape cookies.txt.' }));
                 }
 
+                // Reject a cookie that cannot authenticate before calling Netflix.
+                const diag = cookieDiagnostics(cookieStr);
+                if (!diag.hasNetflixId) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({
+                        error: 'Cookie parsed but no NetflixId found. Make sure you exported the netflix.com cookies (NetflixId is required).',
+                        hint: 'Export both NetflixId and SecureNetflixId from netflix.com.',
+                        diagnostics: diag
+                    }));
+                }
+
                 generateToken(cookieStr)
                     .then(token => {
                         // Only one device is generated per request (web | mobile | tv).
@@ -64,11 +81,15 @@ const server = http.createServer((req, res) => {
                         }));
                     })
                     .catch(err => {
-                        res.writeHead(500, {
+                        res.writeHead(statusForError(err), {
                             'Content-Type': 'application/json',
                             'Access-Control-Allow-Origin': '*'
                         });
-                        res.end(JSON.stringify({ error: err.message || 'Failed to generate token' }));
+                        res.end(JSON.stringify({
+                            error: err.message || 'Failed to generate token',
+                            hint: err.hint,
+                            diagnostics: err.details
+                        }));
                     });
             } catch (e) {
                 res.writeHead(400, {
@@ -151,69 +172,6 @@ const server = http.createServer((req, res) => {
         }
     });
 });
-
-function generateToken(cookieStr) {
-    return new Promise((resolve, reject) => {
-        const queryParams = new URLSearchParams({
-            "appVersion": "15.48.1",
-            "device_type": "NFAPPL-02-",
-            "esn": "NFAPPL-02-IPHONE8=1-PXA-02026U9VV5O8AUKEAEO8PUJETCGDD4PQRI9DEB3MDLEMD0EACM4CS78LMD334MN3MQ3NMJ8SU9O9MVGS6BJCURM1PH1MUTGDPF4S4200",
-            "idiom": "phone",
-            "iosVersion": "15.8.5",
-            "isTablet": "false",
-            "languages": "en-US",
-            "locale": "en-US",
-            "maxDeviceWidth": "375",
-            "model": "saget",
-            "modelType": "IPHONE8-1",
-            "odpAware": "true",
-            "path": '["account","token","default"]',
-            "pathFormat": "graph",
-            "pixelDensity": "2.0",
-            "progressive": "false",
-            "responseFormat": "json"
-        });
-
-        const targetUrl = 'https://ios.prod.ftl.netflix.com/iosui/user/15.48?' + queryParams.toString();
-
-        const headers = {
-            "User-Agent": "Argo/15.48.1 (iPhone; iOS 15.8.5; Scale/2.00)",
-            "Accept": "*/*",
-            "Cookie": cookieStr,
-            "x-netflix.request.routing": '{"path":"/nq/mobile/nqios/~15.48.0/user","control_tag":"iosui_argo"}',
-            "x-netflix.client.type": "argo",
-            "x-netflix.client.ftl.esn": "NFAPPL-02-IPHONE8=1-PXA-02026U9VV5O8AUKEAEO8PUJETCGDD4PQRI9DEB3MDLEMD0EACM4CS78LMD334MN3MQ3NMJ8SU9O9MVGS6BJCURM1PH1MUTGDPF4S4200"
-        };
-
-        const req = https.get(targetUrl, { headers, timeout: 15000 }, (res) => {
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                try {
-                    const json = JSON.parse(data);
-                    if (json && json.value && json.value.account && json.value.account.token && json.value.account.token.default && json.value.account.token.default.token) {
-                        resolve(json.value.account.token.default.token);
-                    } else if (json.error) {
-                        reject(new Error("Netflix API Error: " + JSON.stringify(json.error)));
-                    } else {
-                        reject(new Error("Token not found in response. Your cookie might be invalid or expired."));
-                    }
-                } catch(e) {
-                    reject(new Error("Invalid JSON response from Netflix"));
-                }
-            });
-        });
-
-        req.on('error', (err) => {
-            reject(err);
-        });
-
-        req.on('timeout', () => {
-            req.destroy();
-            reject(new Error('Request to Netflix timed out'));
-        });
-    });
-}
 
 server.listen(PORT, () => {
     console.log(`\n=============================================`);

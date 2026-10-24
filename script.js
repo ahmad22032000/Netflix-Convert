@@ -115,6 +115,34 @@ document.addEventListener('DOMContentLoaded', () => {
         resultEmpty.textContent = message || 'Link generation failed.';
     }
 
+    /** One-line summary of what was actually detected inside the pasted cookie. */
+    function cookieSummary(diag) {
+        if (!diag) return '';
+        const parts = [];
+
+        const names = Array.isArray(diag.names) ? diag.names : [];
+        if (names.length) parts.push('cookie names: ' + names.join(', '));
+        else parts.push('no cookie names detected');
+
+        parts.push(diag.hasNetflixId ? `NetflixId ${diag.netflixIdLength} chars` : 'NetflixId MISSING');
+        if (diag.hasSecureNetflixId) parts.push(`SecureNetflixId ${diag.secureNetflixIdLength} chars`);
+        else parts.push('SecureNetflixId missing');
+
+        return parts.join(' · ');
+    }
+
+    /** Error text shown in the banner: message + hint + cookie diagnostics. */
+    function describeError(err) {
+        const lines = [err && err.message ? err.message : 'Request failed.'];
+
+        if (err && err.hint) lines.push('Hint: ' + err.hint);
+
+        const summary = cookieSummary(err && err.diagnostics);
+        if (summary) lines.push('Detected: ' + summary);
+
+        return lines.join('\n');
+    }
+
     /* ---------------- fetch helper ---------------- */
 
     async function postJSON(endpoint, payload, timeoutMs) {
@@ -137,7 +165,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (!res.ok) {
-                throw new Error(data.error || `Request failed (HTTP ${res.status})`);
+                const err = new Error(data.error || `Request failed (HTTP ${res.status})`);
+                err.status = res.status;
+                err.hint = data.hint;
+                err.diagnostics = data.diagnostics;
+                throw err;
             }
 
             return data;
@@ -212,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     linkError = 'Token response was incomplete. Cookie might be invalid or expired.';
                 }
             } else {
-                linkError = (linkRes.reason && linkRes.reason.message) || 'Failed to generate token.';
+                linkError = describeError(linkRes.reason);
             }
 
             // Handle Account Info
@@ -238,7 +270,6 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 const infoError = (infoRes.reason && infoRes.reason.message)
                     || 'Could not load account info for this cookie.';
-
                 accEmail.textContent = "—";
                 accPhone.textContent = "—";
                 accPlan.textContent = "—";
@@ -269,7 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } catch (error) {
-            showError(error.message || 'Unexpected error. Please try again.');
+            showError(describeError(error));
         } finally {
             setControlsDisabled(false);
             updateDeviceUI();
